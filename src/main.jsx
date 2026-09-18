@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, Building2, ChevronDown, Globe2, Menu, Play, X, Search, ShieldCheck, BriefcaseBusiness, UserRound, FileText, BarChart3, LayoutDashboard, LogOut, WalletCards, FolderOpen, MessageSquare, Users, TrendingUp, CircleDollarSign } from 'lucide-react';
+import { ArrowUpRight, Building2, ChevronDown, Globe2, Menu, Play, X, Search, BriefcaseBusiness, UserRound, BarChart3, LayoutDashboard, LogOut, WalletCards, FolderOpen, MessageSquare, Users, TrendingUp, CircleDollarSign, LoaderCircle } from 'lucide-react';
 import './styles.css';
 
 const divisions = [
@@ -26,16 +26,17 @@ function App() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const [route, setRoute] = React.useState(window.location.hash || '#top');
-  const [session, setSession] = React.useState(() => localStorage.getItem('abg_session') || '');
-  const [role, setRole] = React.useState(() => localStorage.getItem('abg_role') || 'client');
-  React.useEffect(() => { const onHash=()=>setRoute(window.location.hash||'#top'); window.addEventListener('hashchange',onHash); return()=>window.removeEventListener('hashchange',onHash); }, []);
+  const [session, setSession] = React.useState(() => localStorage.getItem('abg_token') || '');
+  const [user, setUser] = React.useState(null);
+  const [authChecking, setAuthChecking] = React.useState(true);
+  React.useEffect(() => { const onHash=()=>setRoute(window.location.hash||'#top'); window.addEventListener('hashchange',onHash); const token=localStorage.getItem('abg_token'); if(!token){setAuthChecking(false);return;} request('/me').then(d=>setUser(d.user)).catch(()=>{localStorage.removeItem('abg_token');setSession('');}).finally(()=>setAuthChecking(false)); return()=>window.removeEventListener('hashchange',onHash); }, []);
   const go = hash => { window.location.hash=hash; setOpen(false); };
-  const signIn = (selectedRole='client') => { localStorage.setItem('abg_session','demo-session'); localStorage.setItem('abg_role',selectedRole); setSession('demo-session'); setRole(selectedRole); go(selectedRole==='admin'?'#admin':'#portal'); };
-  const signOut = () => { localStorage.removeItem('abg_session'); localStorage.removeItem('abg_role'); setSession(''); setRole('client'); go('#top'); };
-  if (route === '#portal' && !session) return <AuthPage onSignIn={signIn}/>;
-  if (route === '#admin' && !session) return <AuthPage onSignIn={signIn} admin/>;
-  if (route === '#portal') return role === 'admin' ? <AdminPage onSignOut={signOut} go={go}/> : <PortalPage onSignOut={signOut} go={go}/>;
-  if (route === '#admin') return role === 'admin' ? <AdminPage onSignOut={signOut} go={go}/> : <AuthPage onSignIn={signIn} admin/>;
+  const signIn = (token,u) => { localStorage.setItem('abg_token',token); setSession(token); setUser(u); };
+  const signOut = () => { localStorage.removeItem('abg_token'); setSession(''); setUser(null); go('#top'); };
+  if (authChecking) return <div className="app-page auth-page"><div className="auth-panel"><LoaderCircle className="spin"/><p className="muted">Checking your secure session…</p></div></div>;
+  if ((route === '#portal' || route === '#admin') && !session) return <AuthPage onSignIn={(token,u)=>{signIn(token,u);go(u.role==='admin'?'#admin':'#portal');}} admin={route==='#admin'}/>;
+  if (route === '#portal') return user?.role === 'admin' ? <AdminPage onSignOut={signOut} go={go}/> : <PortalPage user={user} onSignOut={signOut} go={go}/>;
+  if (route === '#admin') return user?.role === 'admin' ? <AdminPage onSignOut={signOut} go={go}/> : <AuthPage onSignIn={(token,u)=>{signIn(token,u);go(u.role==='admin'?'#admin':'#portal');}} admin/>;
 
   const closeMenu = () => setOpen(false);
 
@@ -93,7 +94,7 @@ function App() {
         </section>
 
         <section id="contact" className="contact">
-          <div className="contact-inner"><p className="section-label">06 / START A CONVERSATION</p><h2>Let's build something<br/><em>valuable.</em></h2><p>Tell us what you're working on, what you're building, or where you see an opportunity.</p><form onSubmit={e=>{e.preventDefault();alert('Thank you. Your enquiry has been captured for the Aurelia team.')}}><input required placeholder="Your name"/><input required type="email" placeholder="Business email"/><textarea required placeholder="Tell us about your opportunity"/><button className="button light" type="submit">Send enquiry <ArrowUpRight size={17}/></button></form></div>
+          <div className="contact-inner"><p className="section-label">06 / START A CONVERSATION</p><h2>Let's build something<br/><em>valuable.</em></h2><p>Tell us what you're working on, what you're building, or where you see an opportunity.</p><form onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const d=await request('/enquiries',{method:'POST',body:JSON.stringify({name:f.get('name'),email:f.get('email'),message:f.get('message')})});e.currentTarget.reset();alert(d.message)}catch(err){alert(err.message)}}}><input required placeholder="Your name"/><input required type="email" placeholder="Business email"/><textarea required placeholder="Tell us about your opportunity"/><button className="button light" type="submit">Send enquiry <ArrowUpRight size={17}/></button></form></div>
           <div className="contact-art"><Globe2 size={300} strokeWidth={0.5}/></div>
         </section>
       </main>
@@ -106,15 +107,9 @@ function App() {
 }
 
 function AuthPage({ onSignIn, admin=false }) {
-  return <div className="app-page auth-page"><div className="auth-panel">
-    <a className="brand dark-brand" href="#top"><span>ABG</span><small>AURELIA BUSINESS GROUP</small></a>
-    <p className="section-label">{admin ? 'ADMIN ACCESS' : 'CLIENT PORTAL'}</p>
-    <h1>{admin ? 'Platform administration.' : 'Your business, securely connected.'}</h1>
-    <p className="muted">Sign in to continue to the {admin ? 'administration workspace' : 'client workspace'}.</p>
-    <form onSubmit={e=>{e.preventDefault();onSignIn(admin?'admin':'client');}}><label>Email<input required type="email" placeholder="name@company.com"/></label><label>Password<input required type="password" placeholder="••••••••"/></label><button className="button dark-button" type="submit">Sign in <ArrowUpRight size={16}/></button></form>
-    <small className="demo-note">Demo access is stored locally in this browser. Connect a production identity provider before using this for real client accounts.</small>
-    <div className="auth-switch"><button type="button" onClick={()=>onSignIn('client')}>Client demo</button>{admin ? null : <button type="button" onClick={()=>onSignIn('admin')}>Admin demo</button>}</div><a className="back-link" href="#top">← Return to Aurelia</a>
-  </div></div>;
+  const [register,setRegister]=React.useState(!admin), [busy,setBusy]=React.useState(false), [error,setError]=React.useState('');
+  const submit=async e=>{e.preventDefault();setBusy(true);setError('');const f=new FormData(e.currentTarget);try{const data=await request(register?'/auth/register':'/auth/login',{method:'POST',body:JSON.stringify({name:f.get('name'),email:f.get('email'),password:f.get('password')})});onSignIn(data.token,data.user)}catch(err){setError(err.message)}finally{setBusy(false)}};
+  return <div className="app-page auth-page"><div className="auth-panel"><a className="brand dark-brand" href="#top"><span>ABG</span><small>AURELIA BUSINESS GROUP</small></a><p className="section-label">{admin?'ADMIN ACCESS':'CLIENT PORTAL'}</p><h1>{admin?'Platform administration.':register?'Create your client account.':'Welcome back.'}</h1><p className="muted">{admin?'Sign in with an administrator account.':register?'Create a secure account to access your Aurelia workspace.':'Sign in to access your Aurelia workspace.'}</p><form onSubmit={submit}>{register&&!admin?<label>Full name<input required name="name" placeholder="Your full name"/></label>:null}<label>Email<input required name="email" type="email" placeholder="name@company.com"/></label><label>Password<input required name="password" minLength="8" type="password" placeholder="Minimum 8 characters"/></label>{error?<p className="form-error">{error}</p>:null}<button className="button dark-button" disabled={busy} type="submit">{busy?'Please wait…':register?'Create account':'Sign in'} <ArrowUpRight size={16}/></button></form>{!admin?<button className="auth-toggle" onClick={()=>{setRegister(!register);setError('')}}>{register?'Already have an account? Sign in':'New client? Create an account'}</button>:null}<small className="demo-note">Authentication is handled by the Aurelia API. No demo credentials are used.</small><a className="back-link" href="#top">← Return to Aurelia</a></div></div>;
 }
 
 function DashboardNav({ title, onSignOut, go, admin }) {
