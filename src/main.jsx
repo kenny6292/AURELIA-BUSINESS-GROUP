@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowUpRight, Building2, ChevronDown, Globe2, Menu, Play, X, Search, ShieldCheck, BriefcaseBusiness, UserRound, FileText, BarChart3 } from 'lucide-react';
+import { ArrowUpRight, Building2, ChevronDown, Globe2, Menu, Play, X, Search, ShieldCheck, BriefcaseBusiness, UserRound, FileText, BarChart3, LayoutDashboard, LogOut, WalletCards, FolderOpen, MessageSquare, Users, TrendingUp, CircleDollarSign } from 'lucide-react';
 import './styles.css';
 
 const divisions = [
@@ -24,8 +24,17 @@ const properties = [
 
 function App() {
   const [open, setOpen] = React.useState(false);
-  const [portal, setPortal] = React.useState(false);
   const [query, setQuery] = React.useState('');
+  const [route, setRoute] = React.useState(window.location.hash || '#top');
+  const [session, setSession] = React.useState(() => localStorage.getItem('abg_session') || '');
+  React.useEffect(() => { const onHash=()=>setRoute(window.location.hash||'#top'); window.addEventListener('hashchange',onHash); return()=>window.removeEventListener('hashchange',onHash); }, []);
+  const go = hash => { window.location.hash=hash; setOpen(false); };
+  const signIn = () => { localStorage.setItem('abg_session','client-demo'); setSession('client-demo'); go('#portal'); };
+  const signOut = () => { localStorage.removeItem('abg_session'); setSession(''); go('#top'); };
+  if (route === '#portal' && !session) return <AuthPage onSignIn={signIn}/>;
+  if (route === '#admin' && !session) return <AuthPage onSignIn={signIn} admin/>;
+  if (route === '#portal') return <PortalPage onSignOut={signOut} go={go}/>;
+  if (route === '#admin') return <AdminPage onSignOut={signOut} go={go}/>;
 
   const closeMenu = () => setOpen(false);
 
@@ -35,7 +44,7 @@ function App() {
         <a className="brand" href="#top"><span>ABG</span><small>AURELIA BUSINESS GROUP</small></a>
         <nav className={open ? 'navlinks open' : 'navlinks'}>
           {['About', 'Business', 'Projects', 'Properties', 'Insights'].map(item => <a key={item} href={'#' + item.toLowerCase()} onClick={closeMenu}>{item}</a>)}
-          <button className="portal-btn" onClick={() => {setPortal(true); closeMenu();}}><UserRound size={14}/> Client portal</button>
+          <button className="portal-btn" onClick={() => go('#portal')}><UserRound size={14}/> Client portal</button>
           <a href="#contact" className="nav-cta" onClick={closeMenu}>Start a conversation <ArrowUpRight size={16}/></a>
         </nav>
         <button className="menu" aria-label="Toggle menu" onClick={() => setOpen(!open)}>{open ? <X/> : <Menu/>}</button>
@@ -90,8 +99,43 @@ function App() {
 
       <footer><div className="brand"><span>ABG</span><small>AURELIA BUSINESS GROUP</small></div><p>© 2026 Aurelia Business Group. All rights reserved.</p><div className="footer-links"><a href="#top">Privacy</a><a href="#top">Terms</a><a href="#contact">Contact</a></div></footer>
 
-      {portal && <div className="modal-backdrop" onClick={()=>setPortal(false)}><div className="portal-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setPortal(false)}><X/></button><div className="portal-icon"><ShieldCheck/></div><p className="section-label">CLIENT PORTAL</p><h2>Your business,<br/><em>securely connected.</em></h2><p>Access investments, documents, project updates and statements from one secure workspace.</p><div className="portal-options"><button onClick={()=>alert('Secure sign-in will be connected in the authentication phase.')}><UserRound/> Sign in</button><button onClick={()=>alert('Client registration will be connected in the authentication phase.')}><FileText/> Request access</button></div><small>Enterprise authentication and role-based access are planned for the next platform phase.</small></div></div>}
+
     </div>
   );
 }
+
+function AuthPage({ onSignIn, admin=false }) {
+  return <div className="app-page auth-page"><div className="auth-panel">
+    <a className="brand dark-brand" href="#top"><span>ABG</span><small>AURELIA BUSINESS GROUP</small></a>
+    <p className="section-label">{admin ? 'ADMIN ACCESS' : 'CLIENT PORTAL'}</p>
+    <h1>{admin ? 'Platform administration.' : 'Your business, securely connected.'}</h1>
+    <p className="muted">Sign in to continue to the {admin ? 'administration workspace' : 'client workspace'}.</p>
+    <form onSubmit={e=>{e.preventDefault();onSignIn();}}><label>Email<input required type="email" placeholder="name@company.com"/></label><label>Password<input required type="password" placeholder="••••••••"/></label><button className="button dark-button" type="submit">Sign in <ArrowUpRight size={16}/></button></form>
+    <small className="demo-note">Demo access is stored locally in this browser. Connect a production identity provider before using this for real client accounts.</small>
+    <a className="back-link" href="#top">← Return to Aurelia</a>
+  </div></div>;
+}
+
+function DashboardNav({ title, onSignOut, go, admin }) {
+  return <header className="dashboard-nav"><a className="brand dark-brand" href="#top"><span>ABG</span><small>AURELIA BUSINESS GROUP</small></a><span className="workspace-title">{title}</span><nav><button onClick={()=>go(admin?'#admin':'#portal')}><LayoutDashboard size={15}/> Overview</button><button onClick={()=>go('#top')}><Globe2 size={15}/> Website</button><button onClick={onSignOut}><LogOut size={15}/> Sign out</button></nav></header>;
+}
+
+function PortalPage({ onSignOut, go }) {
+  const cards=[['Portfolio value','$12.84M',TrendingUp],['Active investments','08',WalletCards],['Documents','24',FolderOpen],['Open enquiries','03',MessageSquare]];
+  return <div className="app-page dashboard-page"><DashboardNav title="Client workspace" onSignOut={onSignOut} go={go}/><main className="dashboard-content">
+    <div className="dashboard-intro"><div><p className="section-label">CLIENT PORTAL</p><h1>Good morning, <em>Partner.</em></h1><p className="muted">Your investments, documents and active opportunities in one workspace.</p></div><button className="button dark-button" onClick={()=>go('#contact')}>Start an enquiry <ArrowUpRight size={16}/></button></div>
+    <div className="metric-grid">{cards.map(([label,value,Icon])=><article className="metric-card" key={label}><Icon/><span>{label}</span><strong>{value}</strong></article>)}</div>
+    <div className="dashboard-grid"><section className="dashboard-card"><div className="card-head"><div><p className="section-label">PORTFOLIO</p><h2>Investment overview</h2></div></div>{[['Aurelia Growth Fund','$7.20M','+8.4%'],['Meridian Real Estate','$3.64M','+5.1%'],['Northstar Infrastructure','$2.00M','+11.2%']].map(r=><div className="portfolio-row" key={r[0]}><span>{r[0]}</span><strong>{r[1]}</strong><small>{r[2]}</small></div>)}</section><section className="dashboard-card"><p className="section-label">RECENT ACTIVITY</p><h2>Latest updates</h2><div className="activity"><span>12 Sep</span><p>Quarterly statement available</p></div><div className="activity"><span>08 Sep</span><p>Meridian project update posted</p></div><div className="activity"><span>02 Sep</span><p>New document added to your workspace</p></div></section></div>
+  </main></div>;
+}
+
+function AdminPage({ onSignOut, go }) {
+  const items=[['Clients','128',Users],['Properties','36',Building2],['Investments','$84.2M',CircleDollarSign],['Open leads','47',TrendingUp]];
+  return <div className="app-page dashboard-page"><DashboardNav title="Administration" onSignOut={onSignOut} go={go} admin/><main className="dashboard-content">
+    <div className="dashboard-intro"><div><p className="section-label">ADMINISTRATION</p><h1>Platform <em>overview.</em></h1><p className="muted">Central workspace for users, properties, opportunities and platform operations.</p></div></div>
+    <div className="metric-grid">{items.map(([label,value,Icon])=><article className="metric-card" key={label}><Icon/><span>{label}</span><strong>{value}</strong></article>)}</div>
+    <section className="dashboard-card admin-table"><div className="card-head"><div><p className="section-label">LEAD PIPELINE</p><h2>Recent opportunities</h2></div></div><div className="table-row table-head"><span>Company</span><span>Division</span><span>Stage</span><span>Value</span></div>{[['Atlas Holdings','Investment','Qualified','$8.5M'],['Meridian Partners','Real Estate','Proposal','$4.2M'],['Nova Systems','Technology','Discovery','$1.8M']].map(r=><div className="table-row" key={r[0]}>{r.map(v=><span key={v}>{v}</span>)}</div>)}</section>
+  </main></div>;
+}
+
 createRoot(document.getElementById('root')).render(<App />);
