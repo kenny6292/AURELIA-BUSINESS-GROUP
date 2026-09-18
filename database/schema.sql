@@ -57,3 +57,20 @@ CREATE INDEX IF NOT EXISTS investments_user_idx ON investments(user_id);
 
 -- After creating your first admin account through registration, promote it:
 -- UPDATE users SET role='admin' WHERE email='admin@yourdomain.com';
+
+
+CREATE TABLE IF NOT EXISTS payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  reference TEXT UNIQUE NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'paystack',
+  amount NUMERIC(14,2) NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'NGN',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','success','failed','abandoned')),
+  provider_transaction_id BIGINT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS payments_user_idx ON payments(user_id);
+CREATE INDEX IF NOT EXISTS payments_status_idx ON payments(status);
