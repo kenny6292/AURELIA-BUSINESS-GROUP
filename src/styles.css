@@ -20,3 +20,5 @@
 @media(max-width:520px){.metric-grid{grid-template-columns:1fr}.dashboard-nav .brand span{font-size:17px}.dashboard-nav nav button{font-size:0}.dashboard-nav nav button svg{width:17px;height:17px}.portfolio-row{grid-template-columns:1fr auto}.portfolio-row small{display:none}}
 
 .auth-switch{display:flex;gap:8px;margin-top:18px}.auth-switch button{border:1px solid var(--line);background:transparent;padding:9px 12px;font:inherit;font-size:10px;cursor:pointer}.auth-switch button:hover{background:#f1efe8}
+
+.form-error{margin:0;color:#9b2c2c;font-size:.9rem}.auth-toggle{border:0;background:none;text-decoration:underline;cursor:pointer;margin-top:14px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
