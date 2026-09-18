@@ -81,6 +81,7 @@ export default async function handler(req, res) {
 
     if (path.startsWith('admin/')) {
       if (u.role !== 'admin') return send(res, 403, { error: 'Administrator access required.' });
+
       if (method === 'GET' && path === 'admin/overview') {
         const [clients, properties, investments, leads] = await Promise.all([
           db().query("SELECT COUNT(*)::int AS count FROM users WHERE role='client'"),
@@ -90,6 +91,51 @@ export default async function handler(req, res) {
         ]);
         const recent = await db().query('SELECT id,name,email,phone,message,status,created_at FROM enquiries ORDER BY created_at DESC LIMIT 20');
         return send(res, 200, { metrics: { clients: clients.rows[0].count, properties: properties.rows[0].count, investments: investments.rows[0].total, leads: leads.rows[0].count }, enquiries: recent.rows });
+      }
+
+      if (method === 'GET' && path === 'admin/properties') {
+        const result = await db().query('SELECT * FROM properties ORDER BY created_at DESC');
+        return send(res, 200, { properties: result.rows });
+      }
+
+      if (method === 'POST' && path === 'admin/properties') {
+        const { title, location, type, price, currency='USD', image_url=null, description='', status='available' } = b;
+        if (!title || !location || !type || price === undefined) return send(res, 400, { error: 'Title, location, type and price are required.' });
+        const result = await db().query('INSERT INTO properties (title,location,type,price,currency,image_url,description,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [title.trim(),location.trim(),type.trim(),price,currency,image_url,description,status]);
+        return send(res, 201, { property: result.rows[0] });
+      }
+
+      if (method === 'PATCH' && path.startsWith('admin/properties/')) {
+        const id = path.split('/').pop();
+        const allowed=['title','location','type','price','currency','image_url','description','status'];
+        const entries=Object.entries(b).filter(([k,v])=>allowed.includes(k) && v!==undefined);
+        if(!entries.length) return send(res,400,{error:'No fields to update.'});
+        const values=entries.map(([,v])=>v); const set=entries.map(([k],i)=>k+'=$'+(i+1)).join(',');
+        values.push(id);
+        const result=await db().query('UPDATE properties SET '+set+' WHERE id=$'+values.length+' RETURNING *',values);
+        if(!result.rowCount) return send(res,404,{error:'Property not found.'});
+        return send(res,200,{property:result.rows[0]});
+      }
+
+      if (method === 'DELETE' && path.startsWith('admin/properties/')) {
+        const id=path.split('/').pop();
+        const result=await db().query('DELETE FROM properties WHERE id=$1 RETURNING id',[id]);
+        if(!result.rowCount) return send(res,404,{error:'Property not found.'});
+        return send(res,200,{message:'Property deleted.'});
+      }
+
+      if (method === 'PATCH' && path.startsWith('admin/enquiries/')) {
+        const id=path.split('/').pop();
+        const {status}=b;
+        if(!['new','qualified','proposal','closed'].includes(status)) return send(res,400,{error:'Invalid enquiry status.'});
+        const result=await db().query('UPDATE enquiries SET status=$1 WHERE id=$2 RETURNING id,status',[status,id]);
+        if(!result.rowCount) return send(res,404,{error:'Enquiry not found.'});
+        return send(res,200,{enquiry:result.rows[0]});
+      }
+
+      if (method === 'GET' && path === 'admin/users') {
+        const result=await db().query("SELECT id,name,email,role,created_at FROM users ORDER BY created_at DESC");
+        return send(res,200,{users:result.rows});
       }
     }
 
