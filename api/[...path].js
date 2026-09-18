@@ -17,7 +17,7 @@ function auth(req) {
   try { return jwt.verify(value.slice(7), process.env.JWT_SECRET); } catch { return null; }
 }
 function send(res, status, data) { res.status(status).json(data); }
-function body(req) { return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); }
+function body(req) { try { return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); } catch { throw Object.assign(new Error('Invalid JSON body.'), { statusCode: 400 }); } }\nfunction cleanText(value, max=5000) { return typeof value === 'string' ? value.trim().slice(0,max) : ''; }\nfunction validEmail(value) { return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value); }
 
 export default async function handler(req, res) {
   try {
