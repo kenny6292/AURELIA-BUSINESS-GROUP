@@ -113,7 +113,7 @@ function AuthPage({ onSignIn, admin=false }) {
     <p className="muted">Sign in to continue to the {admin ? 'administration workspace' : 'client workspace'}.</p>
     <form onSubmit={e=>{e.preventDefault();onSignIn(admin?'admin':'client');}}><label>Email<input required type="email" placeholder="name@company.com"/></label><label>Password<input required type="password" placeholder="••••••••"/></label><button className="button dark-button" type="submit">Sign in <ArrowUpRight size={16}/></button></form>
     <small className="demo-note">Demo access is stored locally in this browser. Connect a production identity provider before using this for real client accounts.</small>
-    <a className="back-link" href="#top">← Return to Aurelia</a>
+    <div className="auth-switch"><button type="button" onClick={()=>onSignIn('client')}>Client demo</button>{admin ? null : <button type="button" onClick={()=>onSignIn('admin')}>Admin demo</button>}</div><a className="back-link" href="#top">← Return to Aurelia</a>
   </div></div>;
 }
 
