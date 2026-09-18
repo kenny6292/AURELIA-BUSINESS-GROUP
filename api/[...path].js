@@ -17,7 +17,7 @@ function auth(req) {
   try { return jwt.verify(value.slice(7), process.env.JWT_SECRET); } catch { return null; }
 }
 function send(res, status, data) { res.status(status).json(data); }
-function body(req) { try { return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); } catch { throw Object.assign(new Error('Invalid JSON body.'), { statusCode: 400 }); } }\nfunction cleanText(value, max=5000) { return typeof value === 'string' ? value.trim().slice(0,max) : ''; }\nfunction validEmail(value) { return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value); }
+function body(req) { try { return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); } catch { throw Object.assign(new Error('Invalid JSON body.'), { statusCode: 400 }); } }\nfunction cleanText(value, max=5000) { return typeof value === 'string' ? value.trim().slice(0,max) : ''; }\nfunction validEmail(value) { return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value); }\nfunction validUUID(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }\nconst currencies=['USD','EUR','GBP','NGN'];\nconst propertyStatuses=['available','reserved','sold'];
 
 export default async function handler(req, res) {
   try {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     if (method === 'POST' && path === 'auth/register') {
       const { name, email, password } = b;
-      if (!name || !email || !password || password.length < 8) return send(res, 400, { error: 'Name, email and an 8-character password are required.' });
+      if (!name || !email || !password || password.length < 8 || cleanText(name,120).length < 2 || !validEmail(email)) return send(res, 400, { error: 'Enter a valid name, email and an 8-character password.' });
       const existing = await db().query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
       if (existing.rowCount) return send(res, 409, { error: 'An account with this email already exists.' });
       const hash = await bcrypt.hash(password, 12);
@@ -55,9 +55,9 @@ export default async function handler(req, res) {
 
     if (method === 'POST' && path === 'enquiries') {
       const { name, email, message, phone } = b;
-      if (!name || !email || !message) return send(res, 400, { error: 'Name, email and message are required.' });
+      if (!name || !email || !message || !validEmail(email)) return send(res, 400, { error: 'Enter a valid name, email and message.' });
       const u = auth(req);
-      await db().query('INSERT INTO enquiries (user_id,name,email,phone,message,status) VALUES ($1,$2,$3,$4,$5,$6)', [u?.sub || null, name.trim(), email.toLowerCase(), phone || null, message.trim(), 'new']);
+      await db().query('INSERT INTO enquiries (user_id,name,email,phone,message,status) VALUES ($1,$2,$3,$4,$5,$6)', [u?.sub || null, cleanText(name,120), email.toLowerCase(), cleanText(phone,40) || null, cleanText(message,5000), 'new']);
       return send(res, 201, { message: 'Your enquiry has been received.' });
     }
 
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
       if (method === 'POST' && path === 'admin/properties') {
         const { title, location, type, price, currency='USD', image_url=null, description='', status='available' } = b;
         if (!title || !location || !type || price === undefined) return send(res, 400, { error: 'Title, location, type and price are required.' });
-        const result = await db().query('INSERT INTO properties (title,location,type,price,currency,image_url,description,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [title.trim(),location.trim(),type.trim(),price,currency,image_url,description,status]);
+        const result = await db().query('INSERT INTO properties (title,location,type,price,currency,image_url,description,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [cleanText(title,160),cleanText(location,160),cleanText(type,100),Number(price),currency,cleanText(image_url,1000)||null,cleanText(description,5000),status]);
         return send(res, 201, { property: result.rows[0] });
       }
 
@@ -110,7 +110,42 @@ export default async function handler(req, res) {
         const allowed=['title','location','type','price','currency','image_url','description','status'];
         const entries=Object.entries(b).filter(([k,v])=>allowed.includes(k) && v!==undefined);
         if(!entries.length) return send(res,400,{error:'No fields to update.'});
-        const values=entries.map(([,v])=>v); const set=entries.map(([k],i)=>k+'=$'+(i+1)).join(',');
+        if (entries.some(([k,v]) => (k==='price' && (!Number.isFinite(Number(v)) || Number(v)<0)) || (k==='currency' && !currencies.includes(v)) || (k==='status' && !propertyStatuses.includes(v)))) return send(res,400,{error:'Invalid property field value.'});\n        const values=entries.map(([k,v])=>k==='price'?Number(v):typeof v==='string'?cleanText(v,5000):v); const set=entries.map(([k],i)=>k+'=
+        values.push(id);
+        const result=await db().query('UPDATE properties SET '+set+' WHERE id=$'+values.length+' RETURNING *',values);
+        if(!result.rowCount) return send(res,404,{error:'Property not found.'});
+        return send(res,200,{property:result.rows[0]});
+      }
+
+      if (method === 'DELETE' && path.startsWith('admin/properties/')) {
+        const id=path.split('/').pop();
+        const result=await db().query('DELETE FROM properties WHERE id=$1 RETURNING id',[id]);
+        if(!result.rowCount) return send(res,404,{error:'Property not found.'});
+        return send(res,200,{message:'Property deleted.'});
+      }
+
+      if (method === 'PATCH' && path.startsWith('admin/enquiries/')) {
+        const id=path.split('/').pop();
+        const {status}=b;
+        if(!['new','qualified','proposal','closed'].includes(status)) return send(res,400,{error:'Invalid enquiry status.'});
+        const result=await db().query('UPDATE enquiries SET status=$1 WHERE id=$2 RETURNING id,status',[status,id]);
+        if(!result.rowCount) return send(res,404,{error:'Enquiry not found.'});
+        return send(res,200,{enquiry:result.rows[0]});
+      }
+
+      if (method === 'GET' && path === 'admin/users') {
+        const result=await db().query("SELECT id,name,email,role,created_at FROM users ORDER BY created_at DESC");
+        return send(res,200,{users:result.rows});
+      }
+    }
+
+    return send(res, 404, { error: 'Not found.' });
+  } catch (error) {
+    console.error(error);
+    return send(res, 500, { error: process.env.NODE_ENV === 'production' ? 'Server error.' : error.message });
+  }
+}
++(i+1)).join(',');
         values.push(id);
         const result=await db().query('UPDATE properties SET '+set+' WHERE id=$'+values.length+' RETURNING *',values);
         if(!result.rowCount) return send(res,404,{error:'Property not found.'});
