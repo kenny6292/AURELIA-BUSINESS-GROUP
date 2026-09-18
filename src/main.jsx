@@ -107,8 +107,8 @@ function App() {
 }
 
 function PropertySection({query,setQuery}) {
-  const [items,setItems]=React.useState([]),[loading,setLoading]=React.useState(true);
-  React.useEffect(()=>{request('/properties').then(d=>setItems(d.properties)).catch(()=>setItems([])).finally(()=>setLoading(false))},[]);
+  const [items,setItems]=React.useState([]),[loading,setLoading]=React.useState(true),[error,setError]=React.useState('');
+  React.useEffect(()=>{request('/properties').then(d=>setItems(d.properties)).catch(e=>{setItems([]);setError(e.message)}).finally(()=>setLoading(false))},[]);
   const shown=items.length?items:properties;
   return <section id="properties" className="properties section"><div className="section-head"><div><p className="section-label">04 / PROPERTY</p><h2>Spaces with<br/><em>purpose.</em></h2></div><div className="property-search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search properties..."/></div></div>{loading?<p className="muted">Loading property inventory…</p>:null}{error?<p className="form-error">{error}</p>:null}{!loading&&!error&&!shown.length?<p className="muted">No properties are currently available.</p>:null}<div className="property-grid">{shown.filter(item=>(item.title+item.location+item.type).toLowerCase().includes(query.toLowerCase())).map(item=><article className="property-card" key={item.id||item.title}><div className="property-mark"><Building2 size={22}/></div><span>{item.type}</span><h3>{item.title}</h3><p>{item.location}</p><strong>{item.currency?new Intl.NumberFormat('en-US',{style:'currency',currency:item.currency,maximumFractionDigits:0}).format(Number(item.price)):item.price}</strong><a href="#contact">Request details <ArrowUpRight size={15}/></a></article>)}</div></section>;
 }
@@ -125,6 +125,7 @@ function DashboardNav({ title, onSignOut, go, admin }) {
 
 function PortalPage({user,onSignOut,go}) {
   const [data,setData]=React.useState(null),[error,setError]=React.useState('');
+  const [paying,setPaying]=React.useState(false),[paymentAmount,setPaymentAmount]=React.useState(''),[paymentMessage,setPaymentMessage]=React.useState('');
   React.useEffect(()=>{request('/portal').then(setData).catch(e=>setError(e.message))},[]);
   if(error)return <div className="app-page auth-page"><div className="auth-panel"><p className="form-error">{error}</p><button className="button dark-button" onClick={onSignOut}>Sign out</button></div></div>;
   if(!data)return <div className="app-page auth-page"><div className="auth-panel"><LoaderCircle className="spin"/><p className="muted">Loading your secure workspace…</p></div></div>;
