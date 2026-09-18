@@ -27,14 +27,15 @@ function App() {
   const [query, setQuery] = React.useState('');
   const [route, setRoute] = React.useState(window.location.hash || '#top');
   const [session, setSession] = React.useState(() => localStorage.getItem('abg_session') || '');
+  const [role, setRole] = React.useState(() => localStorage.getItem('abg_role') || 'client');
   React.useEffect(() => { const onHash=()=>setRoute(window.location.hash||'#top'); window.addEventListener('hashchange',onHash); return()=>window.removeEventListener('hashchange',onHash); }, []);
   const go = hash => { window.location.hash=hash; setOpen(false); };
-  const signIn = () => { localStorage.setItem('abg_session','client-demo'); setSession('client-demo'); go('#portal'); };
-  const signOut = () => { localStorage.removeItem('abg_session'); setSession(''); go('#top'); };
+  const signIn = (selectedRole='client') => { localStorage.setItem('abg_session','demo-session'); localStorage.setItem('abg_role',selectedRole); setSession('demo-session'); setRole(selectedRole); go(selectedRole==='admin'?'#admin':'#portal'); };
+  const signOut = () => { localStorage.removeItem('abg_session'); localStorage.removeItem('abg_role'); setSession(''); setRole('client'); go('#top'); };
   if (route === '#portal' && !session) return <AuthPage onSignIn={signIn}/>;
   if (route === '#admin' && !session) return <AuthPage onSignIn={signIn} admin/>;
-  if (route === '#portal') return <PortalPage onSignOut={signOut} go={go}/>;
-  if (route === '#admin') return <AdminPage onSignOut={signOut} go={go}/>;
+  if (route === '#portal') return role === 'admin' ? <AdminPage onSignOut={signOut} go={go}/> : <PortalPage onSignOut={signOut} go={go}/>;
+  if (route === '#admin') return role === 'admin' ? <AdminPage onSignOut={signOut} go={go}/> : <AuthPage onSignIn={signIn} admin/>;
 
   const closeMenu = () => setOpen(false);
 
@@ -110,7 +111,7 @@ function AuthPage({ onSignIn, admin=false }) {
     <p className="section-label">{admin ? 'ADMIN ACCESS' : 'CLIENT PORTAL'}</p>
     <h1>{admin ? 'Platform administration.' : 'Your business, securely connected.'}</h1>
     <p className="muted">Sign in to continue to the {admin ? 'administration workspace' : 'client workspace'}.</p>
-    <form onSubmit={e=>{e.preventDefault();onSignIn();}}><label>Email<input required type="email" placeholder="name@company.com"/></label><label>Password<input required type="password" placeholder="••••••••"/></label><button className="button dark-button" type="submit">Sign in <ArrowUpRight size={16}/></button></form>
+    <form onSubmit={e=>{e.preventDefault();onSignIn(admin?'admin':'client');}}><label>Email<input required type="email" placeholder="name@company.com"/></label><label>Password<input required type="password" placeholder="••••••••"/></label><button className="button dark-button" type="submit">Sign in <ArrowUpRight size={16}/></button></form>
     <small className="demo-note">Demo access is stored locally in this browser. Connect a production identity provider before using this for real client accounts.</small>
     <a className="back-link" href="#top">← Return to Aurelia</a>
   </div></div>;
