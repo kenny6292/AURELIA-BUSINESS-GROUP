@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 let pool;
 function db() {
@@ -69,6 +70,55 @@ export default async function handler(req, res) {
     const u = auth(req);
     if (!u) return send(res, 401, { error: 'Authentication required.' });
 
+
+    if (method === 'POST' && path === 'payments/initialize') {
+      if (!process.env.PAYSTACK_SECRET_KEY) return send(res, 503, { error: 'Payment service is not configured.' });
+      const { amount, currency='NGN', metadata={} } = b;
+      const cleanAmount = Number(amount);
+      if (!Number.isFinite(cleanAmount) || cleanAmount <= 0 || !['NGN','GHS','ZAR','KES','USD'].includes(currency)) return send(res,400,{error:'Enter a valid payment amount and currency.'});
+      const userResult = await db().query('SELECT id,name,email FROM users WHERE id=$1',[u.sub]);
+      if (!userResult.rowCount) return send(res,401,{error:'Account not found.'});
+      const customer=userResult.rows[0];
+      const reference='ABG-'+crypto.randomUUID();
+      await db().query('INSERT INTO payments (user_id,reference,provider,amount,currency,status,metadata) VALUES ($1,$2,$3,$4,$5,$6,$7)',[u.sub,reference,'paystack',cleanAmount,currency,'pending',JSON.stringify(cleanText(JSON.stringify(metadata),2000))]);
+      const response=await fetch('https://api.paystack.co/transaction/initialize',{method:'POST',headers:{Authorization:'Bearer '+process.env.PAYSTACK_SECRET_KEY,'Content-Type':'application/json'},body:JSON.stringify({email:customer.email,amount:String(Math.round(cleanAmount*100)),currency,reference,callback_url:(process.env.APP_URL||'').replace(/\/$/,'')+'/#portal',metadata:{user_id:u.sub,reference}})});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok || !result.status) return send(res,502,{error:'Unable to initialize payment.'});
+      return send(res,200,{authorization_url:result.data.authorization_url,access_code:result.data.access_code,reference});
+    }
+
+    if (method === 'GET' && path.startsWith('payments/verify/')) {
+      if (!process.env.PAYSTACK_SECRET_KEY) return send(res,503,{error:'Payment service is not configured.'});
+      const reference=path.split('/').pop();
+      if(!reference || !/^[A-Za-z0-9.=_-]{3,100}$/.test(reference)) return send(res,400,{error:'Invalid payment reference.'});
+      const payment=await db().query('SELECT * FROM payments WHERE reference=$1 AND user_id=$2',[reference,u.sub]);
+      if(!payment.rowCount) return send(res,404,{error:'Payment not found.'});
+      const response=await fetch('https://api.paystack.co/transaction/verify/'+encodeURIComponent(reference),{headers:{Authorization:'Bearer '+process.env.PAYSTACK_SECRET_KEY}});
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok || !result.status) return send(res,502,{error:'Unable to verify payment.'});
+      const tx=result.data;
+      const expected=Math.round(Number(payment.rows[0].amount)*100);
+      if(Number(tx.amount)!==expected || tx.currency!==payment.rows[0].currency) return send(res,400,{error:'Payment verification mismatch.'});
+      const status=tx.status==='success'?'success':payment.rows[0].status;
+      await db().query('UPDATE payments SET status=$1,provider_transaction_id=$2,updated_at=now() WHERE reference=$3',[status,tx.id,reference]);
+      return send(res,200,{status,reference});
+    }
+
+    if (method === 'POST' && path === 'payments/webhook') {
+      if (!process.env.PAYSTACK_SECRET_KEY) return send(res,503,{error:'Payment service is not configured.'});
+      const signature=req.headers['x-paystack-signature'];
+      const payload=JSON.stringify(b);
+      const expected=crypto.createHmac('sha512',process.env.PAYSTACK_SECRET_KEY).update(payload).digest('hex');
+      if(!signature || !crypto.timingSafeEqual(Buffer.from(String(signature)),Buffer.from(expected))) return send(res,401,{error:'Invalid webhook signature.'});
+      if(b.event==='charge.success' && b.data?.reference){
+        const p=await db().query('SELECT * FROM payments WHERE reference=$1',[b.data.reference]);
+        if(p.rowCount && Number(b.data.amount)===Math.round(Number(p.rows[0].amount)*100) && b.data.currency===p.rows[0].currency){
+          await db().query('UPDATE payments SET status=$1,provider_transaction_id=$2,updated_at=now() WHERE reference=$3 AND status<>$1',['success',b.data.id,b.data.reference]);
+        }
+      }
+      return send(res,200,{received:true});
+    }
+
     if (method === 'GET' && path === 'portal') {
       const [investments, documents, enquiries] = await Promise.all([
         db().query('SELECT id,name,value,return_percent,status FROM investments WHERE user_id=$1 ORDER BY created_at DESC', [u.sub]),
@@ -81,6 +131,34 @@ export default async function handler(req, res) {
 
     if (path.startsWith('admin/')) {
       if (u.role !== 'admin') return send(res, 403, { error: 'Administrator access required.' });
+
+
+      if (method === 'GET' && path === 'admin/investments') {
+        const result=await db().query('SELECT i.*,u.name AS user_name,u.email AS user_email FROM investments i JOIN users u ON u.id=i.user_id ORDER BY i.created_at DESC');
+        return send(res,200,{investments:result.rows});
+      }
+      if (method === 'POST' && path === 'admin/investments') {
+        const {user_id,name,value,return_percent=0,status='active'}=b;
+        if(!validUUID(user_id)||!name||!Number.isFinite(Number(value))||Number(value)<0) return send(res,400,{error:'Valid user, name and value are required.'});
+        const result=await db().query('INSERT INTO investments (user_id,name,value,return_percent,status) VALUES ($1,$2,$3,$4,$5) RETURNING *',[user_id,cleanText(name,200),Number(value),Number(return_percent)||0,cleanText(status,50)]);
+        return send(res,201,{investment:result.rows[0]});
+      }
+      if (method === 'DELETE' && path.startsWith('admin/investments/')) {
+        const id=path.split('/').pop(); if(!validUUID(id)) return send(res,400,{error:'Invalid investment id.'});
+        const result=await db().query('DELETE FROM investments WHERE id=$1 RETURNING id',[id]);
+        if(!result.rowCount) return send(res,404,{error:'Investment not found.'});
+        return send(res,200,{message:'Investment deleted.'});
+      }
+      if (method === 'GET' && path === 'admin/documents') {
+        const result=await db().query('SELECT d.*,u.name AS user_name,u.email AS user_email FROM documents d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC');
+        return send(res,200,{documents:result.rows});
+      }
+      if (method === 'POST' && path === 'admin/documents') {
+        const {user_id,name,file_url}=b;
+        if(!validUUID(user_id)||!name||!file_url) return send(res,400,{error:'User, document name and file URL are required.'});
+        const result=await db().query('INSERT INTO documents (user_id,name,file_url) VALUES ($1,$2,$3) RETURNING *',[user_id,cleanText(name,200),cleanText(file_url,2000)]);
+        return send(res,201,{document:result.rows[0]});
+      }
 
       if (method === 'GET' && path === 'admin/overview') {
         const [clients, properties, investments, leads] = await Promise.all([
