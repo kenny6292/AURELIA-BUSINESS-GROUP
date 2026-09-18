@@ -109,7 +109,7 @@ export default async function handler(req, res) {
       const signature=req.headers['x-paystack-signature'];
       const payload=JSON.stringify(b);
       const expected=crypto.createHmac('sha512',process.env.PAYSTACK_SECRET_KEY).update(payload).digest('hex');
-      if(!signature || !crypto.timingSafeEqual(Buffer.from(String(signature)),Buffer.from(expected))) return send(res,401,{error:'Invalid webhook signature.'});
+      if(!signature || String(signature).length!==expected.length || !crypto.timingSafeEqual(Buffer.from(String(signature)),Buffer.from(expected))) return send(res,401,{error:'Invalid webhook signature.'});
       if(b.event==='charge.success' && b.data?.reference){
         const p=await db().query('SELECT * FROM payments WHERE reference=$1',[b.data.reference]);
         if(p.rowCount && Number(b.data.amount)===Math.round(Number(p.rows[0].amount)*100) && b.data.currency===p.rows[0].currency){
@@ -185,10 +185,13 @@ export default async function handler(req, res) {
 
       if (method === 'PATCH' && path.startsWith('admin/properties/')) {
         const id = path.split('/').pop();
+        if (!validUUID(id)) return send(res, 400, { error: 'Invalid property id.' });
         const allowed=['title','location','type','price','currency','image_url','description','status'];
         const entries=Object.entries(b).filter(([k,v])=>allowed.includes(k) && v!==undefined);
         if(!entries.length) return send(res,400,{error:'No fields to update.'});
-        if (entries.some(([k,v]) => (k==='price' && (!Number.isFinite(Number(v)) || Number(v)<0)) || (k==='currency' && !currencies.includes(v)) || (k==='status' && !propertyStatuses.includes(v)))) return send(res,400,{error:'Invalid property field value.'});\n        const values=entries.map(([k,v])=>k==='price'?Number(v):typeof v==='string'?cleanText(v,5000):v); const set=entries.map(([k],i)=>k+'=
+        if (entries.some(([k,v]) => (k==='price' && (!Number.isFinite(Number(v)) || Number(v)<0)) || (k==='currency' && !currencies.includes(v)) || (k==='status' && !propertyStatuses.includes(v)))) return send(res,400,{error:'Invalid property field value.'});
+        const values=entries.map(([k,v])=>k==='price'?Number(v):typeof v==='string'?cleanText(v,5000):v);
+        const set=entries.map(([k],i)=>k+'=$'+(i+1)).join(',');
         values.push(id);
         const result=await db().query('UPDATE properties SET '+set+' WHERE id=$'+values.length+' RETURNING *',values);
         if(!result.rowCount) return send(res,404,{error:'Property not found.'});
