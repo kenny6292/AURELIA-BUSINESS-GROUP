@@ -22,6 +22,9 @@ const properties = [
   { title: 'Westbridge House', location: 'London, UK', type: 'Private office', price: '$6.4M' }
 ];
 
+const API='/api';
+async function request(path, options={}) { const token=localStorage.getItem('abg_token'); const headers={'Content-Type':'application/json',...(options.headers||{})}; if(token) headers.Authorization='Bearer '+token; const response=await fetch(API+path,{...options,headers}); const data=await response.json().catch(()=>({})); if(!response.ok) throw new Error(data.error||'Request failed.'); return data; }
+
 function App() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
