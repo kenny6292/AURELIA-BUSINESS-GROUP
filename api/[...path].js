@@ -17,7 +17,8 @@ const propertyStatuses=['available','reserved','sold'];
 
 export default async function handler(req,res){
   try{
-    const path=(req.query.path||[]).join('/');
+    const rawPath=Array.isArray(req.query.path)?req.query.path.join('/'):String(req.query.path||'');
+    const path=rawPath.replace(/^\/?api\/?/,'').replace(/^\/+|\/+$/g,'');
     const method=req.method;
     const b=parse(req);
 
